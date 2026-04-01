@@ -63,6 +63,22 @@ def update_sword_image(name, image_url):
     cur.close()
     conn.close()
 
+def update_sword_value(name, value):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('UPDATE swords SET value = %s WHERE name = %s', (value, name))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def update_sword_demand(name, demand):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('UPDATE swords SET demand = %s WHERE name = %s', (demand, name))
+    conn.commit()
+    cur.close()
+    conn.close()
+
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='/', intents=intents)
@@ -101,6 +117,30 @@ async def setimage(interaction: discord.Interaction, sword_name: str, image_url:
         return
     update_sword_image(sword_name, image_url)
     await interaction.response.send_message(f"Image updated for '{sword_name}'!")
+
+@bot.tree.command(name="updatevalue", description="Update the value of an existing sword (Admin only)")
+@discord.app_commands.default_permissions(administrator=True)
+@discord.app_commands.describe(sword_name="Name of the sword", value="New value")
+@discord.app_commands.autocomplete(sword_name=item_name_autocomplete)
+async def updatevalue(interaction: discord.Interaction, sword_name: str, value: str):
+    data = get_sword(sword_name)
+    if not data:
+        await interaction.response.send_message(f"No sword found named '{sword_name}'")
+        return
+    update_sword_value(sword_name, value)
+    await interaction.response.send_message(f"Value updated for '{sword_name}' to {value}!")
+
+@bot.tree.command(name="updatedemand", description="Update the demand of an existing sword (Admin only)")
+@discord.app_commands.default_permissions(administrator=True)
+@discord.app_commands.describe(sword_name="Name of the sword", demand="New demand level")
+@discord.app_commands.autocomplete(sword_name=item_name_autocomplete)
+async def updatedemand(interaction: discord.Interaction, sword_name: str, demand: str):
+    data = get_sword(sword_name)
+    if not data:
+        await interaction.response.send_message(f"No sword found named '{sword_name}'")
+        return
+    update_sword_demand(sword_name, demand)
+    await interaction.response.send_message(f"Demand updated for '{sword_name}' to {demand}!")
 
 @bot.tree.command(name="sword", description="View info of an item")
 @discord.app_commands.describe(sword_name="Name of the item")
