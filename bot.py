@@ -1,25 +1,8 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from flask import Flask
-from threading import Thread
-
-app = Flask('')
-
-@app.route('/')
-def home():
-    return 'Bot is alive!'
-
-def run_server():
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
-
-def keep_alive():
-    t = Thread(target=run_server)
-    t.daemon = True
-    t.start()
 
 def get_db():
     return psycopg2.connect(os.environ['DATABASE_URL'])
@@ -35,30 +18,6 @@ def init_db():
             image_url TEXT
         )
     ''')
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS bot_status (
-            id SERIAL PRIMARY KEY,
-            last_message_id TEXT
-        )
-    ''')
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def get_last_message_id():
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('SELECT last_message_id FROM bot_status LIMIT 1')
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row[0] if row else None
-
-def save_last_message_id(message_id):
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('DELETE FROM bot_status')
-    cur.execute('INSERT INTO bot_status (last_message_id) VALUES (%s)', (str(message_id),))
     conn.commit()
     cur.close()
     conn.close()
@@ -96,20 +55,17 @@ def get_sword(name):
     conn.close()
     return dict(row) if row else None
 
+def update_sword_image(name, image_url):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('UPDATE swords SET image_url = %s WHERE name = %s', (image_url, name))
+    conn.commit()
+    cur.close()
+    conn.close()
+
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='/', intents=intents)
-
-STATUS_CHANNEL_ID = int(os.environ.get('STATUS_CHANNEL_ID', 0))
-
-@tasks.loop(hours=1)
-async def send_status():
-    if not STATUS_CHANNEL_ID:
-        return
-    channel = bot.get_channel(STATUS_CHANNEL_ID)
-    if channel:
-        msg = await channel.send('🟢 - ONLINE')
-        save_last_message_id(msg.id)
 
 @bot.event
 async def on_ready():
@@ -117,21 +73,6 @@ async def on_ready():
     print(f'Logged in as {bot.user}')
     await bot.tree.sync()
     print("Slash commands synced!")
-
-    if STATUS_CHANNEL_ID:
-        channel = bot.get_channel(STATUS_CHANNEL_ID)
-        if channel:
-            last_id = get_last_message_id()
-            if last_id:
-                try:
-                    old_msg = await channel.fetch_message(int(last_id))
-                    await old_msg.edit(content='🔴 - OFFLINE (was down, now back)')
-                except:
-                    pass
-            msg = await channel.send('🟢 - ONLINE')
-            save_last_message_id(msg.id)
-
-    send_status.start()
 
 async def item_name_autocomplete(interaction: discord.Interaction, current: str):
     swords = get_all_swords()
@@ -148,6 +89,18 @@ async def item_name_autocomplete(interaction: discord.Interaction, current: str)
 async def setitem(interaction: discord.Interaction, item_name: str, value: str, demand: str, image_url: str):
     save_sword(item_name, value, demand, image_url)
     await interaction.response.send_message(f"Item '{item_name}' has been set/updated!")
+
+@bot.tree.command(name="setimage", description="Set the image for an existing sword (Admin only)")
+@discord.app_commands.default_permissions(administrator=True)
+@discord.app_commands.describe(sword_name="Name of the sword", image_url="Image URL")
+@discord.app_commands.autocomplete(sword_name=item_name_autocomplete)
+async def setimage(interaction: discord.Interaction, sword_name: str, image_url: str):
+    data = get_sword(sword_name)
+    if not data:
+        await interaction.response.send_message(f"No sword found named '{sword_name}'")
+        return
+    update_sword_image(sword_name, image_url)
+    await interaction.response.send_message(f"Image updated for '{sword_name}'!")
 
 @bot.tree.command(name="sword", description="View info of an item")
 @discord.app_commands.describe(sword_name="Name of the item")
@@ -168,5 +121,4 @@ token = os.environ.get('DISCORD_TOKEN')
 if not token:
     raise ValueError("DISCORD_TOKEN environment variable is not set!")
 
-keep_alive()
 bot.run(token)
