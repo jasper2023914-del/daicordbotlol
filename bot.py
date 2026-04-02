@@ -205,35 +205,6 @@ async def sword(interaction: discord.Interaction, sword_name: str):
     except Exception as e:
         await interaction.response.send_message(f"Error fetching '{sword_name}': {e}")
 
-# New command: /deletesword
-@bot.tree.command(name="deletesword", description="Delete all entries related to a sword (Admin only)")
-@discord.app_commands.default_permissions(administrator=True)
-@discord.app_commands.describe(sword_name="Name of the sword to delete")
-@discord.app_commands.autocomplete(item_name=item_name_autocomplete)
-async def deletesword(interaction: discord.Interaction, sword_name: str):
-    await interaction.response.defer(ephemeral=True)
-    if sword_name not in sword_cache:
-        await interaction.followup.send(f"No sword found named '{sword_name}'")
-        return
-    try:
-        # Delete all entries with the sword name
-        conn = _get_db()
-        try:
-            cur = conn.cursor()
-            cur.execute('DELETE FROM swords WHERE name = %s', (sword_name,))
-            conn.commit()
-            cur.close()
-        finally:
-            _release_db(conn)
-
-        # Refresh cache after deletion
-        _refresh_cache()
-
-        await interaction.followup.send(f"All entries for '{sword_name}' have been deleted.")
-    except Exception as e:
-        await interaction.followup.send(f"Error deleting '{sword_name}': {e}")
-
-# Run the bot
 token = os.environ.get('DISCORD_TOKEN')
 if not token:
     raise ValueError("DISCORD_TOKEN environment variable is not set!")
