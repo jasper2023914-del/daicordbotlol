@@ -105,6 +105,17 @@ def _update_demand(name, demand):
         _release_db(conn)
     _refresh_cache()
 
+def _delete_sword(name):
+    conn = _get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute('DELETE FROM swords WHERE name = %s', (name,))
+        conn.commit()
+        cur.close()
+    finally:
+        _release_db(conn)
+    _refresh_cache()
+
 async def run_db(func, *args):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, func, *args)
@@ -186,6 +197,21 @@ async def updatedemand(interaction: discord.Interaction, sword_name: str, demand
         await interaction.followup.send(f"Demand updated for '{sword_name}' to {demand}!")
     except Exception as e:
         await interaction.followup.send(f"Error updating demand: {e}")
+
+@bot.tree.command(name="deletesword", description="Delete a sword and all its data (Admin only)")
+@discord.app_commands.default_permissions(administrator=True)
+@discord.app_commands.describe(sword_name="Name of the sword to delete")
+@discord.app_commands.autocomplete(sword_name=item_name_autocomplete)
+async def deletesword(interaction: discord.Interaction, sword_name: str):
+    await interaction.response.defer(ephemeral=True)
+    if sword_name not in sword_cache:
+        await interaction.followup.send(f"No sword found named '{sword_name}'")
+        return
+    try:
+        await run_db(_delete_sword, sword_name)
+        await interaction.followup.send(f"'{sword_name}' has been deleted!")
+    except Exception as e:
+        await interaction.followup.send(f"Error deleting '{sword_name}': {e}")
 
 @bot.tree.command(name="sword", description="View info of an item")
 @discord.app_commands.describe(sword_name="Name of the item")
