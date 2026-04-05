@@ -9,6 +9,8 @@ from psycopg2 import pool
 sword_cache = {}
 db_pool = None
 
+VALUE_ADJUSTER_ROLE = "value adjuster"
+
 def _create_pool():
     return pool.ThreadedConnectionPool(1, 5, os.environ['DATABASE_URL'])
 
@@ -120,6 +122,14 @@ async def run_db(func, *args):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, func, *args)
 
+def has_value_adjuster_or_admin(interaction: discord.Interaction) -> bool:
+    member = interaction.user
+    if not isinstance(member, discord.Member):
+        return False
+    if member.guild_permissions.administrator:
+        return True
+    return any(role.name.lower() == VALUE_ADJUSTER_ROLE for role in member.roles)
+
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='/', intents=intents)
@@ -134,6 +144,19 @@ async def on_ready():
     await bot.tree.sync()
     print("Slash commands synced!")
 
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    if isinstance(error, discord.app_commands.CheckFailure):
+        await interaction.response.send_message(
+            "You don't have permission to use this command.",
+            ephemeral=True
+        )
+    else:
+        await interaction.response.send_message(
+            f"An error occurred: {error}",
+            ephemeral=True
+        )
+
 async def item_name_autocomplete(interaction: discord.Interaction, current: str):
     return [
         discord.app_commands.Choice(name=item, value=item)
@@ -141,8 +164,8 @@ async def item_name_autocomplete(interaction: discord.Interaction, current: str)
         if current.lower() in item.lower()
     ][:25]
 
-@bot.tree.command(name="setitem", description="Add or update a sword (Admin only)")
-@discord.app_commands.default_permissions(administrator=True)
+@bot.tree.command(name="setitem", description="Add or update a sword (Value Adjuster or Admin only)")
+@discord.app_commands.check(has_value_adjuster_or_admin)
 @discord.app_commands.describe(item_name="Name of the sword", value="Value of the sword", demand="Demand level")
 @discord.app_commands.autocomplete(item_name=item_name_autocomplete)
 async def setitem(interaction: discord.Interaction, item_name: str, value: str, demand: str):
@@ -153,8 +176,8 @@ async def setitem(interaction: discord.Interaction, item_name: str, value: str, 
     except Exception as e:
         await interaction.followup.send(f"Error saving '{item_name}': {e}")
 
-@bot.tree.command(name="setimage", description="Set the image for an existing sword (Admin only)")
-@discord.app_commands.default_permissions(administrator=True)
+@bot.tree.command(name="setimage", description="Set the image for an existing sword (Value Adjuster or Admin only)")
+@discord.app_commands.check(has_value_adjuster_or_admin)
 @discord.app_commands.describe(sword_name="Name of the sword", image_url="Image URL")
 @discord.app_commands.autocomplete(sword_name=item_name_autocomplete)
 async def setimage(interaction: discord.Interaction, sword_name: str, image_url: str):
@@ -168,8 +191,8 @@ async def setimage(interaction: discord.Interaction, sword_name: str, image_url:
     except Exception as e:
         await interaction.followup.send(f"Error updating image: {e}")
 
-@bot.tree.command(name="updatevalue", description="Update the value of an existing sword (Admin only)")
-@discord.app_commands.default_permissions(administrator=True)
+@bot.tree.command(name="updatevalue", description="Update the value of an existing sword (Value Adjuster or Admin only)")
+@discord.app_commands.check(has_value_adjuster_or_admin)
 @discord.app_commands.describe(sword_name="Name of the sword", value="New value")
 @discord.app_commands.autocomplete(sword_name=item_name_autocomplete)
 async def updatevalue(interaction: discord.Interaction, sword_name: str, value: str):
@@ -183,8 +206,8 @@ async def updatevalue(interaction: discord.Interaction, sword_name: str, value: 
     except Exception as e:
         await interaction.followup.send(f"Error updating value: {e}")
 
-@bot.tree.command(name="updatedemand", description="Update the demand of an existing sword (Admin only)")
-@discord.app_commands.default_permissions(administrator=True)
+@bot.tree.command(name="updatedemand", description="Update the demand of an existing sword (Value Adjuster or Admin only)")
+@discord.app_commands.check(has_value_adjuster_or_admin)
 @discord.app_commands.describe(sword_name="Name of the sword", demand="New demand level")
 @discord.app_commands.autocomplete(sword_name=item_name_autocomplete)
 async def updatedemand(interaction: discord.Interaction, sword_name: str, demand: str):
@@ -198,8 +221,8 @@ async def updatedemand(interaction: discord.Interaction, sword_name: str, demand
     except Exception as e:
         await interaction.followup.send(f"Error updating demand: {e}")
 
-@bot.tree.command(name="deletesword", description="Delete a sword and all its data (Admin only)")
-@discord.app_commands.default_permissions(administrator=True)
+@bot.tree.command(name="deletesword", description="Delete a sword and all its data (Value Adjuster or Admin only)")
+@discord.app_commands.check(has_value_adjuster_or_admin)
 @discord.app_commands.describe(sword_name="Name of the sword to delete")
 @discord.app_commands.autocomplete(sword_name=item_name_autocomplete)
 async def deletesword(interaction: discord.Interaction, sword_name: str):
