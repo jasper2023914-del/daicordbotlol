@@ -10,6 +10,7 @@ sword_cache = {}
 db_pool = None
 
 VALUE_ADJUSTER_ROLE = "value adjuster"
+LOG_CHANNEL_ID = 1490419697399890080
 
 def _create_pool():
     return pool.ThreadedConnectionPool(1, 5, os.environ['DATABASE_URL'])
@@ -122,6 +123,23 @@ async def run_db(func, *args):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, func, *args)
 
+async def log_action(interaction: discord.Interaction, description: str):
+    channel = interaction.client.get_channel(LOG_CHANNEL_ID)
+    if channel is None:
+        return
+    user = interaction.user
+    embed = discord.Embed(
+        title="Action Log",
+        description=description,
+        color=discord.Color.blurple()
+    )
+    embed.set_author(name=str(user), icon_url=user.display_avatar.url)
+    embed.add_field(name="User", value=f"{user.mention} (`{user.id}`)", inline=True)
+    embed.add_field(name="Channel", value=f"<#{interaction.channel_id}>", inline=True)
+    import datetime
+    embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
+    await channel.send(embed=embed)
+
 def has_value_adjuster_or_admin(interaction: discord.Interaction) -> bool:
     member = interaction.user
     if not isinstance(member, discord.Member):
@@ -173,6 +191,7 @@ async def setitem(interaction: discord.Interaction, item_name: str, value: str, 
     try:
         await run_db(_save_sword, item_name, value, demand)
         await interaction.followup.send(f"'{item_name}' has been set/updated!")
+        await log_action(interaction, f"**`/setitem`** — Set/updated **{item_name}**\nValue: `{value}` | Demand: `{demand}`")
     except Exception as e:
         await interaction.followup.send(f"Error saving '{item_name}': {e}")
 
@@ -188,6 +207,7 @@ async def setimage(interaction: discord.Interaction, sword_name: str, image_url:
     try:
         await run_db(_update_image, sword_name, image_url)
         await interaction.followup.send(f"Image updated for '{sword_name}'!")
+        await log_action(interaction, f"**`/setimage`** — Updated image for **{sword_name}**\nURL: `{image_url}`")
     except Exception as e:
         await interaction.followup.send(f"Error updating image: {e}")
 
@@ -203,6 +223,7 @@ async def updatevalue(interaction: discord.Interaction, sword_name: str, value: 
     try:
         await run_db(_update_value, sword_name, value)
         await interaction.followup.send(f"Value updated for '{sword_name}' to {value}!")
+        await log_action(interaction, f"**`/updatevalue`** — Updated value for **{sword_name}**\nNew Value: `{value}`")
     except Exception as e:
         await interaction.followup.send(f"Error updating value: {e}")
 
@@ -218,6 +239,7 @@ async def updatedemand(interaction: discord.Interaction, sword_name: str, demand
     try:
         await run_db(_update_demand, sword_name, demand)
         await interaction.followup.send(f"Demand updated for '{sword_name}' to {demand}!")
+        await log_action(interaction, f"**`/updatedemand`** — Updated demand for **{sword_name}**\nNew Demand: `{demand}`")
     except Exception as e:
         await interaction.followup.send(f"Error updating demand: {e}")
 
@@ -233,6 +255,7 @@ async def deletesword(interaction: discord.Interaction, sword_name: str):
     try:
         await run_db(_delete_sword, sword_name)
         await interaction.followup.send(f"'{sword_name}' has been deleted!")
+        await log_action(interaction, f"**`/deletesword`** — Deleted **{sword_name}**")
     except Exception as e:
         await interaction.followup.send(f"Error deleting '{sword_name}': {e}")
 
